@@ -2,8 +2,17 @@
 
 Execute commands on a remote host over an authenticated WebSocket connection.
 
-Primary use case: You are using ssh remote development with VSCode or Zed and want to execute commands on the host running VSCode/Zed UI. For example to copy things to clipboard with `pbcopy`.
+Primary use case: You are using ssh remote development with VSCode or Zed and
+want to execute commands on the host running VSCode/Zed UI. For example to copy
+things to clipboard with `pbcopy`. Ex. start the server on macOS and execute the
+client on your linux devbox.
 
+Features:
+
+- stdin/stdout/stderr streaming
+- command allow listing
+- build-in daemon mode
+- easy ssh port-forwarding with `--ssh-forward`
 
 ## Quick Start
 
