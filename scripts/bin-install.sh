@@ -49,11 +49,6 @@ mkdir -p "$install_dir"
 mv "${tmpdir}/hostcmd" "${install_dir}/hostcmd"
 chmod +x "${install_dir}/hostcmd"
 
-echo "hostcmd installed to ${install_dir}/hostcmd"
+"${install_dir}/hostcmd" --version
 
-# Warn if ~/.local/bin is not in PATH
-if [[ ":${PATH}:" != *":${install_dir}:"* ]]; then
-    echo "Warning: ${install_dir} is not in your PATH." >&2
-    echo "Add it to your shell profile, e.g.:" >&2
-    echo "  export PATH=\"${install_dir}:\$PATH\"" >&2
-fi
+echo "hostcmd installed to ${install_dir}/hostcmd"

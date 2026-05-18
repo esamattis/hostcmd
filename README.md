@@ -56,6 +56,14 @@ sequenceDiagram
 
 ## Install
 
+Download [latest release](https://github.com/esamattis/hostcmd/releases/latest) binary to `~/.local/bin` with:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/esamattis/hostcmd/refs/heads/main/scripts/bin-install.sh)"
+```
+
+Or install from source using Cargo
+
 ```sh
 cargo install --locked --path .
 ```
