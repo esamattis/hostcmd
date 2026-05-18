@@ -15,6 +15,14 @@ hostcmd server --secret s3cret --port 8080 --host 127.0.0.1
 hostcmd exec --secret s3cret --port 8080 --host 127.0.0.1 uname -a
 ```
 
+## Install
+
+Download [latest release](https://github.com/esamattis/hostcmd/releases/latest) binary to `~/.local/bin` with:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/esamattis/hostcmd/refs/heads/main/scripts/bin-install.sh)"
+```
+
 ## Architecture
 
 The client initiates a WebSocket connection to the server's `/ws` endpoint,
@@ -54,19 +62,6 @@ sequenceDiagram
 ```
 
 
-## Install
-
-Download [latest release](https://github.com/esamattis/hostcmd/releases/latest) binary to `~/.local/bin` with:
-
-```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/esamattis/hostcmd/refs/heads/main/scripts/bin-install.sh)"
-```
-
-Or install from source using Cargo
-
-```sh
-cargo install --locked --path .
-```
 
 ## Commands
 
