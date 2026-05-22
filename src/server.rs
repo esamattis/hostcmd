@@ -461,9 +461,14 @@ fn spawn_ssh_forward(
     command
         .arg(&hostname)
         .args([
+            "-v",
             "-R",
             remote.as_str(),
             "-N",
+            "-o",
+            "ControlMaster=no",
+            "-o",
+            "ControlPath=none",
             "-o",
             "ExitOnForwardFailure=yes",
         ])
