@@ -29,10 +29,11 @@ use tokio::{task::JoinHandle, time::sleep};
 use crate::{
     cli::ServerArgs,
     config::{
-        ALLOW_ENV_VAR, CLIENT_EXEC_ENV_VALUE, CLIENT_EXEC_ENV_VAR, CLIENT_HOSTNAME_ENV_VAR,
-        DAEMON_READY_FILE_ENV_VAR, DEFAULT_LOG_FILE, HOST_ENV_VAR, LOG_FILE_ENV_VAR,
-        PID_FILE_ENV_VAR, PORT_ENV_VAR, SECRET_ENV_VAR, SSH_FORWARD_ENV_VAR,
-        SSH_FORWARD_PORT_ENV_VAR, TEST_READY_FILE_ENV_VAR, expand_home_path,
+        ALLOW_ENV_VAR, CLIENT_CWD_ENV_VAR, CLIENT_EXEC_ENV_VALUE, CLIENT_EXEC_ENV_VAR,
+        CLIENT_HOSTNAME_ENV_VAR, CLIENT_USERNAME_ENV_VAR, DAEMON_READY_FILE_ENV_VAR,
+        DEFAULT_LOG_FILE, HOST_ENV_VAR, LOG_FILE_ENV_VAR, PID_FILE_ENV_VAR, PORT_ENV_VAR,
+        SECRET_ENV_VAR, SSH_FORWARD_ENV_VAR, SSH_FORWARD_PORT_ENV_VAR, TEST_READY_FILE_ENV_VAR,
+        expand_home_path,
     },
     log, logging,
     protocol::{
@@ -80,6 +81,10 @@ enum ServerActorMessage {
         command: Vec<String>,
         /// Hostname of the client machine that requested the command.
         client_hostname: String,
+        /// Username of the client user that requested the command.
+        client_username: String,
+        /// Working directory of the client process that requested the command.
+        client_cwd: String,
         /// Output event channel used to stream command results.
         events: mpsc::Sender<ExecEvent>,
         /// Channel carrying stdin chunks received from the websocket client.
@@ -527,12 +532,14 @@ async fn ws_handler(
 async fn handle_ws(socket: axum::extract::ws::WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
 
-    let (command, client_hostname) = match receiver.next().await {
+    let (command, client_hostname, client_username, client_cwd) = match receiver.next().await {
         Some(Ok(Message::Binary(bytes))) => match ClientFrame::decode(&bytes) {
             Ok(ClientFrame::Exec {
                 command,
                 client_hostname,
-            }) => (command, client_hostname),
+                client_username,
+                client_cwd,
+            }) => (command, client_hostname, client_username, client_cwd),
             Ok(ClientFrame::Cancel) => {
                 let _ = sender
                     .send(Message::Binary(
@@ -611,6 +618,8 @@ async fn handle_ws(socket: axum::extract::ws::WebSocket, state: AppState) {
         .send(ServerActorMessage::Exec {
             command,
             client_hostname,
+            client_username,
+            client_cwd,
             events: events_tx,
             stdin: stdin_rx,
             cancel: cancel_rx,
@@ -807,15 +816,24 @@ async fn server_actor(mut rx: mpsc::Receiver<ServerActorMessage>) {
             ServerActorMessage::Exec {
                 command,
                 client_hostname,
+                client_username,
+                client_cwd,
                 events,
                 stdin,
                 cancel,
                 done,
             } => {
                 logging::spawn_with_current_log_file(async move {
-                    let result =
-                        execute_command(command.clone(), client_hostname, events, stdin, cancel)
-                            .await;
+                    let result = execute_command(
+                        command.clone(),
+                        client_hostname,
+                        client_username,
+                        client_cwd,
+                        events,
+                        stdin,
+                        cancel,
+                    )
+                    .await;
                     if let Err(err) = &result {
                         log_command_error(&command, err);
                     }
@@ -830,13 +848,15 @@ async fn server_actor(mut rx: mpsc::Receiver<ServerActorMessage>) {
 async fn execute_command(
     command: Vec<String>,
     client_hostname: String,
+    client_username: String,
+    client_cwd: String,
     events: mpsc::Sender<ExecEvent>,
     stdin: mpsc::Receiver<Vec<u8>>,
     mut cancel: oneshot::Receiver<()>,
 ) -> Result<()> {
     log!(
         logging::Level::Info,
-        "executing command from client hostname {client_hostname:?}: {:?}",
+        "executing command from client hostname {client_hostname:?}, username {client_username:?}, cwd {client_cwd:?}: {:?}",
         command
     );
 
@@ -847,6 +867,8 @@ async fn execute_command(
     let mut command_builder = TokioCommand::new(program);
     configure_command(&mut command_builder);
     command_builder.env(CLIENT_HOSTNAME_ENV_VAR, &client_hostname);
+    command_builder.env(CLIENT_USERNAME_ENV_VAR, &client_username);
+    command_builder.env(CLIENT_CWD_ENV_VAR, &client_cwd);
     command_builder.env(CLIENT_EXEC_ENV_VAR, CLIENT_EXEC_ENV_VALUE);
 
     let mut child = command_builder

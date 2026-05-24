@@ -1,6 +1,7 @@
 """Smoke tests for the hostcmd command-line interface."""
 
 import os
+import pwd
 import random
 import selectors
 import signal
@@ -9,7 +10,6 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 HOSTCMD = PROJECT_ROOT / "target" / "debug" / "hostcmd"
@@ -169,20 +169,38 @@ class HostcmdSmokeTest(unittest.TestCase):
                 events = selector.select(timeout=5)
 
             if not events:
-                self.fail(f"server did not become ready on {HOST}:{self.port}; log:\n{self.server_log.read_text()}")
+                self.fail(
+                    f"server did not become ready on {HOST}:{self.port}; log:\n{self.server_log.read_text()}"
+                )
 
             ready_message = os.read(read_fd, 16)
         finally:
             os.close(write_fd)
             os.close(read_fd)
 
-        self.assertEqual(ready_message, b"OK\n", "foreground server wrote an unexpected readiness marker")
+        self.assertEqual(
+            ready_message,
+            b"OK\n",
+            "foreground server wrote an unexpected readiness marker",
+        )
 
-    def assert_output(self, result, expected_code, expected_stdout="", expected_stderr=""):
+    def assert_output(
+        self, result, expected_code, expected_stdout="", expected_stderr=""
+    ):
         """Assert a completed process returned the expected code and output."""
-        stdout = result.stdout.decode() if isinstance(result.stdout, bytes) else result.stdout
-        stderr = result.stderr.decode() if isinstance(result.stderr, bytes) else result.stderr
-        self.assertEqual(result.returncode, expected_code, "process returned an unexpected exit code")
+        stdout = (
+            result.stdout.decode()
+            if isinstance(result.stdout, bytes)
+            else result.stdout
+        )
+        stderr = (
+            result.stderr.decode()
+            if isinstance(result.stderr, bytes)
+            else result.stderr
+        )
+        self.assertEqual(
+            result.returncode, expected_code, "process returned an unexpected exit code"
+        )
         self.assertEqual(stdout, expected_stdout, "process wrote unexpected stdout")
         self.assertEqual(stderr, expected_stderr, "process wrote unexpected stderr")
 
@@ -243,17 +261,39 @@ class HostcmdSmokeTest(unittest.TestCase):
         result = self.exec_command("--", "sha1sum", input=b"abc", capture_output=True)
         self.assert_output(result, 0, "a9993e364706816aba3e25717850c26c9cd0d89d  -\n")
 
-        result = self.exec_command("--", "printenv", "HOSTCMD_CLIENT_HOSTNAME", capture_output=True)
+        result = self.exec_command(
+            "--", "printenv", "HOSTCMD_CLIENT_HOSTNAME", capture_output=True
+        )
         self.assert_output(result, 0, f"{socket.gethostname()}\n")
 
-        result = self.exec_command("--", "printenv", "HOSTCMD_CLIENT_EXEC", capture_output=True)
+        result = self.exec_command(
+            "--", "printenv", "HOSTCMD_CLIENT_USERNAME", capture_output=True
+        )
+        self.assert_output(result, 0, f"{pwd.getpwuid(os.geteuid()).pw_name}\n")
+
+        result = self.exec_command(
+            "--", "printenv", "HOSTCMD_CLIENT_CWD", capture_output=True
+        )
+        self.assert_output(result, 0, f"{PROJECT_ROOT}\n")
+
+        result = self.exec_command(
+            "--", "printenv", "HOSTCMD_CLIENT_EXEC", capture_output=True
+        )
         self.assert_output(result, 0, "true\n")
 
         result = self.exec_command("false", capture_output=True, timeout=5)
         stderr = result.stderr.decode()
-        self.assertEqual(result.returncode, 1, "disallowed command returned an unexpected exit code")
-        self.assertEqual(result.stdout, b"", "disallowed command wrote unexpected stdout")
-        self.assertIn("command is not allowed", stderr, "disallowed command stderr did not explain the failure")
+        self.assertEqual(
+            result.returncode, 1, "disallowed command returned an unexpected exit code"
+        )
+        self.assertEqual(
+            result.stdout, b"", "disallowed command wrote unexpected stdout"
+        )
+        self.assertIn(
+            "command is not allowed",
+            stderr,
+            "disallowed command stderr did not explain the failure",
+        )
 
         daemon_port = self.free_port()
         result = self.hostcmd(
@@ -272,10 +312,14 @@ class HostcmdSmokeTest(unittest.TestCase):
             capture_output=True,
         )
         self.assert_output(result, 0)
-        self.assertTrue(self.daemon_pid_file.stat().st_size > 0, "daemon did not write pid file")
+        self.assertTrue(
+            self.daemon_pid_file.stat().st_size > 0, "daemon did not write pid file"
+        )
         self.daemon_pid = int(self.daemon_pid_file.read_text().strip())
         self.assert_pid_running(self.daemon_pid, "daemon pid is not running")
-        self.assertTrue(self.daemon_log.stat().st_size > 0, "daemon did not write log file")
+        self.assertTrue(
+            self.daemon_log.stat().st_size > 0, "daemon did not write log file"
+        )
 
         result = self.hostcmd(
             "exec",
@@ -306,10 +350,20 @@ class HostcmdSmokeTest(unittest.TestCase):
             capture_output=True,
         )
         stderr = result.stderr.decode()
-        self.assertNotEqual(result.returncode, 0, "daemon startup unexpectedly succeeded on an occupied port")
-        self.assertIn("failed to bind", stderr, "occupied-port startup stderr did not explain the bind failure")
+        self.assertNotEqual(
+            result.returncode,
+            0,
+            "daemon startup unexpectedly succeeded on an occupied port",
+        )
+        self.assertIn(
+            "failed to bind",
+            stderr,
+            "occupied-port startup stderr did not explain the bind failure",
+        )
 
-        result = self.hostcmd("stop", "--pid-file", str(self.daemon_pid_file), capture_output=True)
+        result = self.hostcmd(
+            "stop", "--pid-file", str(self.daemon_pid_file), capture_output=True
+        )
         self.assert_output(result, 0)
         self.assert_pid_stopped(self.daemon_pid, "daemon is still running after stop")
         self.daemon_pid = None
@@ -328,28 +382,54 @@ class HostcmdSmokeTest(unittest.TestCase):
 
         result = self.hostcmd("server", "--daemon", capture_output=True, env=env)
         self.assert_output(result, 0)
-        self.assertTrue(default_pid_file.exists(), "flag-free daemon did not create the default pid file")
-        self.assertTrue(default_pid_file.stat().st_size > 0, "flag-free daemon wrote an empty default pid file")
+        self.assertTrue(
+            default_pid_file.exists(),
+            "flag-free daemon did not create the default pid file",
+        )
+        self.assertTrue(
+            default_pid_file.stat().st_size > 0,
+            "flag-free daemon wrote an empty default pid file",
+        )
         self.daemon_pid = int(default_pid_file.read_text().strip())
         self.assert_pid_running(self.daemon_pid, "flag-free daemon pid is not running")
-        self.assertTrue(default_log_file.exists(), "flag-free daemon did not create the default log file")
-        self.assertTrue(default_log_file.stat().st_size > 0, "flag-free daemon wrote an empty default log file")
+        self.assertTrue(
+            default_log_file.exists(),
+            "flag-free daemon did not create the default log file",
+        )
+        self.assertTrue(
+            default_log_file.stat().st_size > 0,
+            "flag-free daemon wrote an empty default log file",
+        )
 
         result = self.hostcmd("exec", "true", capture_output=True, env=env)
         self.assert_output(result, 0)
 
-        result = self.hostcmd("exec", "printenv", "HOSTCMD_CLIENT_EXEC", capture_output=True, env=env)
+        result = self.hostcmd(
+            "exec", "printenv", "HOSTCMD_CLIENT_EXEC", capture_output=True, env=env
+        )
         self.assert_output(result, 0, "true\n")
 
         result = self.hostcmd("exec", "false", capture_output=True, env=env, timeout=5)
         stderr = result.stderr.decode()
-        self.assertEqual(result.returncode, 1, "env-configured allow list returned an unexpected exit code")
-        self.assertEqual(result.stdout, b"", "env-configured allow list wrote unexpected stdout")
-        self.assertIn("command is not allowed", stderr, "env-configured allow list stderr did not explain the failure")
+        self.assertEqual(
+            result.returncode,
+            1,
+            "env-configured allow list returned an unexpected exit code",
+        )
+        self.assertEqual(
+            result.stdout, b"", "env-configured allow list wrote unexpected stdout"
+        )
+        self.assertIn(
+            "command is not allowed",
+            stderr,
+            "env-configured allow list stderr did not explain the failure",
+        )
 
         result = self.hostcmd("stop", capture_output=True, env=env)
         self.assert_output(result, 0)
-        self.assert_pid_stopped(self.daemon_pid, "flag-free daemon is still running after stop")
+        self.assert_pid_stopped(
+            self.daemon_pid, "flag-free daemon is still running after stop"
+        )
         self.daemon_pid = None
 
     def test_command_and_pid_file_environment_variables_work_without_flags(self):
@@ -373,10 +453,18 @@ class HostcmdSmokeTest(unittest.TestCase):
             env=daemon_env,
         )
         self.assert_output(result, 0)
-        self.assertTrue(self.daemon_pid_file.stat().st_size > 0, "env pid file did not receive the daemon pid")
+        self.assertTrue(
+            self.daemon_pid_file.stat().st_size > 0,
+            "env pid file did not receive the daemon pid",
+        )
         self.daemon_pid = int(self.daemon_pid_file.read_text().strip())
-        self.assert_pid_running(self.daemon_pid, "daemon started with env pid file is not running")
-        self.assertTrue(self.daemon_log.stat().st_size > 0, "env log file did not receive daemon logs")
+        self.assert_pid_running(
+            self.daemon_pid, "daemon started with env pid file is not running"
+        )
+        self.assertTrue(
+            self.daemon_log.stat().st_size > 0,
+            "env log file did not receive daemon logs",
+        )
 
         exec_env = self.configured_env(
             HOSTCMD_SECRET=SECRET,
@@ -389,7 +477,9 @@ class HostcmdSmokeTest(unittest.TestCase):
 
         result = self.hostcmd("stop", capture_output=True, env=daemon_env)
         self.assert_output(result, 0)
-        self.assert_pid_stopped(self.daemon_pid, "daemon stopped through HOSTCMD_PID_FILE is still running")
+        self.assert_pid_stopped(
+            self.daemon_pid, "daemon stopped through HOSTCMD_PID_FILE is still running"
+        )
         self.daemon_pid = None
 
 

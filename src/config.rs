@@ -8,6 +8,12 @@ use anyhow::{Result, anyhow};
 /// Environment variable exposed to executed commands with the client hostname.
 pub const CLIENT_HOSTNAME_ENV_VAR: &str = "HOSTCMD_CLIENT_HOSTNAME";
 
+/// Environment variable exposed to executed commands with the client username.
+pub const CLIENT_USERNAME_ENV_VAR: &str = "HOSTCMD_CLIENT_USERNAME";
+
+/// Environment variable exposed to executed commands with the client working directory.
+pub const CLIENT_CWD_ENV_VAR: &str = "HOSTCMD_CLIENT_CWD";
+
 /// Environment variable marking that a command was launched through hostcmd.
 pub const CLIENT_EXEC_ENV_VAR: &str = "HOSTCMD_CLIENT_EXEC";
 

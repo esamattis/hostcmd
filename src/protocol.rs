@@ -81,6 +81,10 @@ pub enum ClientFrame {
         command: Vec<String>,
         /// Hostname of the client machine initiating the command.
         client_hostname: String,
+        /// Username of the client user initiating the command.
+        client_username: String,
+        /// Current working directory of the client process initiating the command.
+        client_cwd: String,
     },
     /// Request graceful cancellation of the running command.
     Cancel,
@@ -98,6 +102,8 @@ impl ClientFrame {
             ClientFrame::Exec {
                 command,
                 client_hostname,
+                client_username,
+                client_cwd,
             } => {
                 out.put_u8(ClientFrameTag::Exec as u8);
                 out.put_u32(command.len() as u32);
@@ -105,6 +111,8 @@ impl ClientFrame {
                     put_string(&mut out, arg);
                 }
                 put_string(&mut out, client_hostname);
+                put_string(&mut out, client_username);
+                put_string(&mut out, client_cwd);
             }
             ClientFrame::Cancel => out.put_u8(ClientFrameTag::Cancel as u8),
             ClientFrame::Stdin(bytes) => {
@@ -137,6 +145,8 @@ impl ClientFrame {
                 }
 
                 let client_hostname = decoder.string().context("client exec: reading hostname")?;
+                let client_username = decoder.string().context("client exec: reading username")?;
+                let client_cwd = decoder.string().context("client exec: reading cwd")?;
 
                 decoder
                     .finish()
@@ -144,6 +154,8 @@ impl ClientFrame {
                 Ok(ClientFrame::Exec {
                     command,
                     client_hostname,
+                    client_username,
+                    client_cwd,
                 })
             }
             ClientFrameTag::Cancel => {
@@ -379,6 +391,8 @@ mod tests {
         let frame = ClientFrame::Exec {
             command: vec!["sh".into(), "-lc".into(), "printf test".into()],
             client_hostname: "workstation".into(),
+            client_username: "esamatti".into(),
+            client_cwd: "/workspace/project".into(),
         };
 
         let decoded = ClientFrame::decode(&frame.encode()).expect("client exec should decode");
@@ -429,6 +443,8 @@ mod tests {
             0, 0, 0, 2, b's', b'h', // command[0]
             0, 0, 0, 5, b'e', b'c', b'h', b'o', b'o', // command[1]
             0, 0, 0, 5, b'h', b'o', b's', b't', b'a', // hostname
+            0, 0, 0, 5, b'u', b's', b'e', b'r', b'a', // username
+            0, 0, 0, 5, b'/', b't', b'm', b'p', b'a', // cwd
         ];
 
         let decoded = ClientFrame::decode(&encoded).expect("inlined client exec should decode");
@@ -438,6 +454,8 @@ mod tests {
             ClientFrame::Exec {
                 command: vec!["sh".into(), "echoo".into()],
                 client_hostname: "hosta".into(),
+                client_username: "usera".into(),
+                client_cwd: "/tmpa".into(),
             },
             "inlined client exec bytes should decode into the expected frame"
         );

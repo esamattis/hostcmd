@@ -204,6 +204,8 @@ Commands spawned by the server receive these additional environment variables:
 | Variable | Value | Description |
 |----------|-------|-------------|
 | `HOSTCMD_CLIENT_HOSTNAME` | Client's hostname | Hostname of the machine that initiated the execution request |
+| `HOSTCMD_CLIENT_USERNAME` | Client's username | Username of the user that initiated the execution request |
+| `HOSTCMD_CLIENT_CWD` | Client's current working directory | Working directory of the client process that initiated the execution request |
 | `HOSTCMD_CLIENT_EXEC` | `true` | Marker indicating the command was launched through hostcmd |
 
 

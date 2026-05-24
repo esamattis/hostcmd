@@ -1,4 +1,6 @@
-use anyhow::{Context, Result, bail};
+use std::env;
+
+use anyhow::{Context, Result, anyhow, bail};
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::{
@@ -29,6 +31,8 @@ pub async fn run_client(args: ExecArgs) -> Result<()> {
 /// Runs one client websocket session and returns the remote exit code.
 async fn run_client_session(args: ExecArgs) -> Result<i32> {
     let client_hostname = resolve_client_hostname()?;
+    let client_username = resolve_client_username()?;
+    let client_cwd = resolve_client_cwd()?;
     let url = format!("ws://{}:{}/ws", args.connection.host, args.connection.port);
     let mut request = url.as_str().into_client_request()?;
 
@@ -57,6 +61,8 @@ async fn run_client_session(args: ExecArgs) -> Result<i32> {
             ClientFrame::Exec {
                 command: args.command,
                 client_hostname,
+                client_username,
+                client_cwd,
             }
             .encode()
             .into(),
@@ -131,6 +137,31 @@ fn resolve_client_hostname() -> Result<String> {
     }
 
     Ok(hostname)
+}
+
+/// Resolves the local username to send with the exec request.
+fn resolve_client_username() -> Result<String> {
+    let user = nix::unistd::User::from_uid(nix::unistd::geteuid())
+        .context("failed to determine client username")?
+        .ok_or_else(|| anyhow!("client user record is missing"))?;
+
+    if user.name.is_empty() {
+        bail!("client username is empty")
+    }
+
+    Ok(user.name)
+}
+
+/// Resolves the local working directory to send with the exec request.
+fn resolve_client_cwd() -> Result<String> {
+    let cwd = env::current_dir().context("failed to determine client current working directory")?;
+    let cwd = cwd.as_os_str().to_string_lossy().into_owned();
+
+    if cwd.is_empty() {
+        bail!("client current working directory is empty")
+    }
+
+    Ok(cwd)
 }
 
 /// Streams local stdin to bounded client protocol frames.
