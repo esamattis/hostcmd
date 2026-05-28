@@ -150,6 +150,14 @@ pub struct ExecArgs {
     #[command(flatten)]
     pub connection: ConnectionArgs,
 
+    /// Local environment variable names to forward to the server.
+    ///
+    /// The client resolves each named variable from its own environment and
+    /// sends the name and value to the server before execution. Repeat this
+    /// flag to forward multiple variables.
+    #[arg(long = "forward-env", short = 'f', value_name = "name")]
+    pub forward_env: Vec<String>,
+
     /// Command and arguments to execute on the server.
     ///
     /// The first token is the executable name and subsequent tokens are
@@ -244,6 +252,46 @@ mod tests {
                 panic!(
                     "expected exec command when parsing remote command arguments without a separator"
                 )
+            }
+        }
+    }
+
+    /// Accepts repeated forwarded environment variable flags before the command.
+    #[test]
+    fn exec_accepts_repeated_forward_env_flags() {
+        let cli = Cli::try_parse_from([
+            "hostcmd",
+            "exec",
+            "--secret",
+            "secret",
+            "--port",
+            "8080",
+            "--host",
+            "127.0.0.1",
+            "-f",
+            "DISPLAY",
+            "--forward-env",
+            "SSH_AUTH_SOCK",
+            "printenv",
+            "DISPLAY",
+        ])
+        .expect("exec command with repeated forward-env flags should parse");
+
+        match cli.command {
+            Commands::Exec(args) => {
+                assert_eq!(
+                    args.forward_env,
+                    ["DISPLAY", "SSH_AUTH_SOCK"],
+                    "exec command should preserve every repeated forward-env value"
+                );
+                assert_eq!(
+                    args.command,
+                    ["printenv", "DISPLAY"],
+                    "exec command should preserve the remote command after forward-env flags"
+                );
+            }
+            Commands::Server(_) | Commands::Stop(_) => {
+                panic!("expected exec command when parsing repeated forward-env arguments")
             }
         }
     }

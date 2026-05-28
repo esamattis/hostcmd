@@ -11,8 +11,9 @@ Features:
 
 - stdin/stdout/stderr streaming
 - command allow listing
-- build-in daemon mode
+- built-in daemon mode
 - easy ssh port-forwarding with `--ssh-forward`
+- optional local environment forwarding with `hostcmd exec --forward-env`
 
 ## Quick Start
 
@@ -132,9 +133,12 @@ hostcmd exec --secret <secret> --port <port> --host <host> [--] <command> [args.
 | `--secret <secret>` | `HOSTCMD_SECRET` | Required. Shared secret for authenticating with the server. |
 | `--port <port>` | `HOSTCMD_PORT` | Required. TCP port to connect to. |
 | `--host <host>` | `HOSTCMD_HOST` | Required. Host address to connect to. |
+| `-f, --forward-env <name>` | - | Optional. Forward one local environment variable to the spawned server-side command. Repeat to forward multiple variables. |
 | `[--] <command> [args...]` | `HOSTCMD_COMMAND` | Required. Command and arguments to execute on the server. |
 
 Stdin is forwarded to the remote command. Stdout and stderr are mirrored locally. The exit code of the remote command becomes the exit code of `hostcmd exec`.
+
+Use `--forward-env <name>` to copy a local environment variable into the spawned server-side command. Each named variable must exist in the local client environment. Repeat the flag to forward multiple variables.
 
 Pressing Ctrl-C sends a cancellation request to the server and exits with code 130.
 
@@ -147,7 +151,12 @@ hostcmd exec --secret my-secret --port 8080 --host 127.0.0.1 uname -a
 # Pipe stdin to the remote command
 echo -n "copy me" | hostcmd exec --secret my-secret --port 8080 --host 127.0.0.1 pbcopy
 
-# Using environment variables
+# Forward local environment variables to the remote command
+DISPLAY=:0 SSH_AUTH_SOCK=/tmp/ssh.sock \
+  hostcmd exec --secret my-secret --port 8080 --host 127.0.0.1 \
+  -f DISPLAY -f SSH_AUTH_SOCK -- printenv DISPLAY
+
+# Using environment variables for connection defaults
 export HOSTCMD_SECRET=my-secret HOSTCMD_PORT=8080 HOSTCMD_HOST=127.0.0.1
 hostcmd exec ls -la
 ```
@@ -176,7 +185,7 @@ Use `--pid-file` when the daemon was started with a custom pid file path.
 
 ## Flag-Free Usage
 
-Every flag (except `--daemon`) has a corresponding environment variable. Export them once and run commands without any flags:
+Most connection and server flags have a corresponding environment variable. Export them once and run commands without repeating those settings:
 
 ```sh
 export HOSTCMD_SECRET=my-secret
@@ -196,10 +205,11 @@ hostcmd stop
 
 This is especially useful when `hostcmd exec` is invoked by other tools that are unaware of the connection details.
 
+`hostcmd exec --forward-env` is intentionally CLI-only because it copies variables from the current local client environment by name.
 
 ## Exec Process Environment Variables
 
-Commands spawned by the server receive these additional environment variables:
+Commands spawned by the server receive these additional environment variables, plus any local variables explicitly forwarded with `hostcmd exec --forward-env`:
 
 | Variable | Value | Description |
 |----------|-------|-------------|

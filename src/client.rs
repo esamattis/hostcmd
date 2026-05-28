@@ -14,7 +14,7 @@ use tokio_tungstenite::{
 
 use crate::{
     cli::ExecArgs,
-    protocol::{CHUNK_SIZE, ClientFrame, DecodedServerFrame},
+    protocol::{CHUNK_SIZE, ClientFrame, DecodedServerFrame, ForwardedEnvVar},
 };
 
 /// Connects to the server, sends an exec request, and mirrors remote output locally.
@@ -33,6 +33,7 @@ async fn run_client_session(args: ExecArgs) -> Result<i32> {
     let client_hostname = resolve_client_hostname()?;
     let client_username = resolve_client_username()?;
     let client_cwd = resolve_client_cwd()?;
+    let forward_env = resolve_forwarded_environment(&args.forward_env)?;
     let url = format!("ws://{}:{}/ws", args.connection.host, args.connection.port);
     let mut request = url.as_str().into_client_request()?;
 
@@ -60,6 +61,7 @@ async fn run_client_session(args: ExecArgs) -> Result<i32> {
         .send(ClientMessage::Binary(
             ClientFrame::Exec {
                 command: args.command,
+                forward_env,
                 client_hostname,
                 client_username,
                 client_cwd,
@@ -150,6 +152,25 @@ fn resolve_client_username() -> Result<String> {
     }
 
     Ok(user.name)
+}
+
+/// Resolves local environment variables requested by `--forward-env`.
+fn resolve_forwarded_environment(names: &[String]) -> Result<Vec<ForwardedEnvVar>> {
+    names
+        .iter()
+        .map(|name| {
+            let value = env::var(name).with_context(|| {
+                format!(
+                    "failed to read local environment variable {name:?} requested by --forward-env"
+                )
+            })?;
+
+            Ok(ForwardedEnvVar {
+                name: name.clone(),
+                value,
+            })
+        })
+        .collect()
 }
 
 /// Resolves the local working directory to send with the exec request.

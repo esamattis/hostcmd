@@ -72,6 +72,15 @@ impl TryFrom<u8> for ServerFrameTag {
     }
 }
 
+/// One local environment variable forwarded from the client to the server.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForwardedEnvVar {
+    /// Name of the environment variable to expose to the spawned command.
+    pub name: String,
+    /// Value copied from the client environment for this variable.
+    pub value: String,
+}
+
 /// Binary protocol frames sent from client to server.
 #[derive(Debug, Eq, PartialEq)]
 pub enum ClientFrame {
@@ -79,6 +88,8 @@ pub enum ClientFrame {
     Exec {
         /// Program and arguments to run on the server.
         command: Vec<String>,
+        /// Local environment variables forwarded from the client.
+        forward_env: Vec<ForwardedEnvVar>,
         /// Hostname of the client machine initiating the command.
         client_hostname: String,
         /// Username of the client user initiating the command.
@@ -101,6 +112,7 @@ impl ClientFrame {
         match self {
             ClientFrame::Exec {
                 command,
+                forward_env,
                 client_hostname,
                 client_username,
                 client_cwd,
@@ -109,6 +121,11 @@ impl ClientFrame {
                 out.put_u32(command.len() as u32);
                 for arg in command {
                     put_string(&mut out, arg);
+                }
+                out.put_u32(forward_env.len() as u32);
+                for env_var in forward_env {
+                    put_string(&mut out, &env_var.name);
+                    put_string(&mut out, &env_var.value);
                 }
                 put_string(&mut out, client_hostname);
                 put_string(&mut out, client_username);
@@ -144,6 +161,22 @@ impl ClientFrame {
                     })?);
                 }
 
+                let forward_env_len = decoder
+                    .u32()
+                    .context("client exec: reading forwarded env count")?
+                    as usize;
+                let mut forward_env = Vec::with_capacity(forward_env_len);
+
+                for index in 0..forward_env_len {
+                    let name = decoder.string().with_context(|| {
+                        format!("client exec: reading forwarded env {index} name")
+                    })?;
+                    let value = decoder.string().with_context(|| {
+                        format!("client exec: reading forwarded env {index} value")
+                    })?;
+                    forward_env.push(ForwardedEnvVar { name, value });
+                }
+
                 let client_hostname = decoder.string().context("client exec: reading hostname")?;
                 let client_username = decoder.string().context("client exec: reading username")?;
                 let client_cwd = decoder.string().context("client exec: reading cwd")?;
@@ -153,6 +186,7 @@ impl ClientFrame {
                     .context("client exec: validating trailing bytes")?;
                 Ok(ClientFrame::Exec {
                     command,
+                    forward_env,
                     client_hostname,
                     client_username,
                     client_cwd,
@@ -376,8 +410,8 @@ impl<'a> Decoder<'a> {
 #[cfg(test)]
 mod tests {
     use super::{
-        BYTE_FRAME_HEADER_SIZE, ClientFrame, DecodedServerFrame, ServerControlFrame,
-        put_stdout_frame_header,
+        BYTE_FRAME_HEADER_SIZE, ClientFrame, DecodedServerFrame, ForwardedEnvVar,
+        ServerControlFrame, put_stdout_frame_header,
     };
 
     /// Formats an error with its full anyhow context chain.
@@ -390,6 +424,16 @@ mod tests {
     fn client_exec_round_trip() {
         let frame = ClientFrame::Exec {
             command: vec!["sh".into(), "-lc".into(), "printf test".into()],
+            forward_env: vec![
+                ForwardedEnvVar {
+                    name: "DISPLAY".into(),
+                    value: ":0".into(),
+                },
+                ForwardedEnvVar {
+                    name: "SSH_AUTH_SOCK".into(),
+                    value: "/tmp/ssh.sock".into(),
+                },
+            ],
             client_hostname: "workstation".into(),
             client_username: "esamatti".into(),
             client_cwd: "/workspace/project".into(),
@@ -442,6 +486,7 @@ mod tests {
             0, 0, 0, 2, // command length
             0, 0, 0, 2, b's', b'h', // command[0]
             0, 0, 0, 5, b'e', b'c', b'h', b'o', b'o', // command[1]
+            0, 0, 0, 0, // forwarded env length
             0, 0, 0, 5, b'h', b'o', b's', b't', b'a', // hostname
             0, 0, 0, 5, b'u', b's', b'e', b'r', b'a', // username
             0, 0, 0, 5, b'/', b't', b'm', b'p', b'a', // cwd
@@ -453,6 +498,7 @@ mod tests {
             decoded,
             ClientFrame::Exec {
                 command: vec!["sh".into(), "echoo".into()],
+                forward_env: vec![],
                 client_hostname: "hosta".into(),
                 client_username: "usera".into(),
                 client_cwd: "/tmpa".into(),

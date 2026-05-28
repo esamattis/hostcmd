@@ -161,6 +161,9 @@ class HostcmdSmokeTest(unittest.TestCase):
         read_fd = os.open(self.server_ready_file, os.O_RDONLY | os.O_NONBLOCK)
         write_fd = os.open(self.server_ready_file, os.O_WRONLY | os.O_NONBLOCK)
         try:
+            if self.server_process is None:
+                self.fail("server process handle is missing before readiness wait")
+
             if self.server_process.poll() is not None:
                 self.fail(f"server exited early; log:\n{self.server_log.read_text()}")
 
@@ -280,6 +283,24 @@ class HostcmdSmokeTest(unittest.TestCase):
             "--", "printenv", "HOSTCMD_CLIENT_EXEC", capture_output=True
         )
         self.assert_output(result, 0, "true\n")
+
+        forward_env = self.configured_env(
+            HOSTCMD_FORWARD_ALPHA="one",
+            HOSTCMD_FORWARD_BETA="two",
+        )
+        result = self.exec_command(
+            "-f",
+            "HOSTCMD_FORWARD_ALPHA",
+            "--forward-env",
+            "HOSTCMD_FORWARD_BETA",
+            "--",
+            "sh",
+            "-c",
+            'printf "%s:%s" "$HOSTCMD_FORWARD_ALPHA" "$HOSTCMD_FORWARD_BETA"',
+            capture_output=True,
+            env=forward_env,
+        )
+        self.assert_output(result, 0, "one:two")
 
         result = self.exec_command("false", capture_output=True, timeout=5)
         stderr = result.stderr.decode()
